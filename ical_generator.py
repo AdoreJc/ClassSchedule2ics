@@ -16,9 +16,16 @@ class GenerateCal:
         self.first_week = "20240205"  # 第一周周一的日期
         self.inform_time = 25  # 提前 N 分钟提醒
         self.g_name = f'{datetime.now().strftime("%Y.%m")} 课程表@{socket.gethostname()}'  # 全局课程表名
-        self.g_color = "#ff9500"  # 预览时的颜色（可以在 iOS 设备上修改）
         self.a_trigger = ""
 
+        try:
+            with open("config.json", 'r', encoding='UTF-8') as f:
+                self.config = json.loads(f.read())
+                f.close()
+        except:
+            print("Error to read config.json")
+            sys.exit()
+        
         # 读取文件，返回 dict(class_timetable) 时间表
         try:
             with open("conf_classTime.json", 'r', encoding='UTF-8') as f:
@@ -27,6 +34,7 @@ class GenerateCal:
         except:
             print("时间配置文件 conf_classTime.json 似乎有点问题")
             sys.exit()
+        
         # 读取文件，返回 dict(class_info) 课程信息
         try:
             with open("conf_classInfo.json", 'r', encoding='UTF-8') as f:
@@ -35,6 +43,9 @@ class GenerateCal:
         except:
             print("课程配置文件 conf_classInfo.json 似乎有点问题")
             sys.exit()
+
+        self.timezone = self.config["timeZone"]
+        self.g_color =  self.config["g_color"]  # 预览时的颜色（可以在 iOS 设备上修改）
 
     # 获取内网ip用于最后的提示
     def get_host_ip(self):
@@ -88,29 +99,15 @@ class GenerateCal:
 VERSION:2.0
 X-WR-CALNAME:{self.g_name}
 X-APPLE-CALENDAR-COLOR:{self.g_color}
-X-WR-TIMEZONE:America/Chicago
+X-WR-TIMEZONE:{self.timezone}
 BEGIN:VTIMEZONE
-TZID:America/Chicago
-X-LIC-LOCATION:America/Chicago
+TZID:{self.timezone}
+X-LIC-LOCATION:{self.timezone}
 BEGIN:STANDARD
-TZOFFSETFROM:-0600
-TZOFFSETTO:-0600
+TZOFFSETFROM:+0800
+TZOFFSETTO:+0800
 TZNAME:CST
 DTSTART:19700101T000000
-END:STANDARD
-BEGIN:DAYLIGHT
-TZOFFSETFROM:-0600
-TZOFFSETTO:-0500
-TZNAME:CDT
-DTSTART:19700308T020000
-RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
-END:DAYLIGHT
-BEGIN:STANDARD
-TZOFFSETFROM:-0500
-TZOFFSETTO:-0600
-TZNAME:CST
-DTSTART:19701101T020000
-RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
 END:STANDARD
 END:VTIMEZONE
 '''
@@ -193,8 +190,8 @@ TRIGGER:{self.a_trigger}\nX-WR-ALARMUID:{uid()}\nUID:{uid()}\nEND:VALARM\n'''
             _ical_base = f'''\nBEGIN:VEVENT
 CREATED:{utc_now}\nDTSTAMP:{utc_now}\nSUMMARY:{obj["ClassName"]}
 DESCRIPTION:{teacher}{serial}\nLOCATION:{str(obj["Classroom"])}
-TZID:America/Chicago\nSEQUENCE:0\nUID:{uid()}\nRRULE:FREQ=WEEKLY;UNTIL={stop_time_str};INTERVAL={extra_status}
-DTSTART;TZID=America/Chicago:{final_stime_str}\nDTEND;TZID=America/Chicago:{final_etime_str}
+TZID:{self.timezone}\nSEQUENCE:0\nUID:{uid()}\nRRULE:FREQ=WEEKLY;UNTIL={stop_time_str};INTERVAL={extra_status}
+DTSTART;TZID={self.timezone}:{final_stime_str}\nDTEND;TZID={self.timezone}:{final_etime_str}
 X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC\n{_alarm_base}END:VEVENT\n'''
             
             # print(_ical_base)
