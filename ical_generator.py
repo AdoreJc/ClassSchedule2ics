@@ -13,7 +13,7 @@ import socket
 class GenerateCal:
     def __init__(self):
         # 定义全局参数
-        self.first_week = "20200224"  # 第一周周一的日期
+        self.first_week = "20240205"  # 第一周周一的日期
         self.inform_time = 25  # 提前 N 分钟提醒
         self.g_name = f'{datetime.now().strftime("%Y.%m")} 课程表@{socket.gethostname()}'  # 全局课程表名
         self.g_color = "#ff9500"  # 预览时的颜色（可以在 iOS 设备上修改）
@@ -47,10 +47,17 @@ class GenerateCal:
         return ip
 
     def set_attribute(self):
-        self.first_week = input("请输入第一周周一的日期，格式为 YYYYMMDD，如 20200224：")  # 第一周周一的日期
+        self.first_week = input("请输入第一周周一的日期，格式为 YYYYMMDD，如 20240205：")  # 第一周周一的日期
+        if not self.first_week:
+            self.first_week = "20240205"
         c = 0
         while c == 0:
             self.inform_time = input("请输入提前提醒时间，以分钟计；若不需要提醒请输入 N：")
+            print(self.inform_time)
+            if (not self.inform_time) | (self.inform_time in "nN"):
+                self.a_trigger = ""
+                break
+            
             try:
                 self.inform_time = int(self.inform_time)  # 提前 N 分钟提醒
                 if self.inform_time <= 60:
@@ -81,15 +88,29 @@ class GenerateCal:
 VERSION:2.0
 X-WR-CALNAME:{self.g_name}
 X-APPLE-CALENDAR-COLOR:{self.g_color}
-X-WR-TIMEZONE:Asia/Shanghai
+X-WR-TIMEZONE:America/Chicago
 BEGIN:VTIMEZONE
-TZID:Asia/Shanghai
-X-LIC-LOCATION:Asia/Shanghai
+TZID:America/Chicago
+X-LIC-LOCATION:America/Chicago
 BEGIN:STANDARD
-TZOFFSETFROM:+0800
-TZOFFSETTO:+0800
+TZOFFSETFROM:-0600
+TZOFFSETTO:-0600
 TZNAME:CST
 DTSTART:19700101T000000
+END:STANDARD
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0600
+TZOFFSETTO:-0500
+TZNAME:CDT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0600
+TZNAME:CST
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
 END:STANDARD
 END:VTIMEZONE
 '''
@@ -106,9 +127,14 @@ END:VTIMEZONE
         initial_time = datetime.strptime(self.first_week, "%Y%m%d")  # 将开始时间转换为时间对象
         i = 1
         for obj in self.class_info:
+            weekdays_str = str(int(float(obj['Weekday'])))
+            # print("星期" + weekdays_str)
+            weekdays_list = [int(day) for day in weekdays_str]  # 将每一位数字转换成整数列表
+            print(weekdays_list)
+
             # 计算课程第一次开始的日期 first_time_obj，公式：7*(开始周数-1) （//把第一周减掉） + 周几 - 1 （没有周0，等于把周一减掉）
             try:
-                delta_time = 7 * (obj['StartWeek'] - 1) + obj['Weekday'] - 1
+                delta_time = 7 * (obj['StartWeek'] - 1) + weekdays_list[0] - 1
             except TypeError:
                 print("请检查 Excel 中是否有无用行，并删除 conf_classInfo.json 后重新运行 Excel 读取器及 iCal 生成器！")
                 sys.exit()
@@ -120,10 +146,15 @@ END:VTIMEZONE
                 if obj["StartWeek"] % 2 != 0:  # 若双周就不变，单周加7
                     delta_time += 7
             first_time_obj = initial_time + timedelta(days=delta_time)  # 处理完单双周之后 first_time_obj 就是真正开始的日期
-            if obj["WeekStatus"] == 0:  # 处理隔周课程
-                extra_status = "1"
+            
+            
+            # 生成重复规则中的星期部分
+            if obj['WeekStatus'] == 0:  # 不区分单双周
+                extra_status = f"1;BYDAY={','.join([weekdays[day - 1] for day in weekdays_list])}"
             else:
-                extra_status = f'2;BYDAY={weekdays[int(obj["Weekday"] - 1)]}'  # BYDAY 是周 N，隔周重复需要带上
+                # 处理单双周逻辑，根据WeekStatus和实际的星期天数调整
+                week_status_str = '1' if obj['WeekStatus'] == 1 else '2'
+                extra_status = f"{week_status_str};BYDAY={','.join([weekdays[day - 1] for day in weekdays_list])}"
 
             try:  # 尝试处理纯数字的课程序号
                 obj["ClassSerial"] = str(int(obj["ClassSerial"]))
@@ -137,11 +168,16 @@ END:VTIMEZONE
             # 计算课程第一次开始、结束的时间，后面使用RRule重复即可，格式类似 20200225T120000
             final_stime_str = first_time_obj.strftime("%Y%m%d") + "T" + \
                               self.class_timetable[str(int(obj['ClassStartTimeId']))]["startTime"]
+            print(final_stime_str)
             final_etime_str = first_time_obj.strftime("%Y%m%d") + "T" + \
                               self.class_timetable[str(int(obj['ClassEndTimeId']))]["endTime"]
+            print(final_etime_str)
             delta_week = 7 * int(obj["EndWeek"] - obj["StartWeek"])
             stop_time_obj = first_time_obj + timedelta(days=delta_week + 1)
+            print(stop_time_obj)
             stop_time_str = stop_time_obj.strftime("%Y%m%dT%H%M%SZ")  # 注意是utc时间，直接+1天处理
+            # print(stop_time_str)
+
             # 教师可选，在此做判断
             try:
                 teacher = f'教师：{obj["Teacher"]}\t'
@@ -156,10 +192,12 @@ TRIGGER:{self.a_trigger}\nX-WR-ALARMUID:{uid()}\nUID:{uid()}\nEND:VALARM\n'''
                 _alarm_base = ""
             _ical_base = f'''\nBEGIN:VEVENT
 CREATED:{utc_now}\nDTSTAMP:{utc_now}\nSUMMARY:{obj["ClassName"]}
-DESCRIPTION:{teacher}{serial}\nLOCATION:{obj["Classroom"]}
-TZID:Asia/Shanghai\nSEQUENCE:0\nUID:{uid()}\nRRULE:FREQ=WEEKLY;UNTIL={stop_time_str};INTERVAL={extra_status}
-DTSTART;TZID=Asia/Shanghai:{final_stime_str}\nDTEND;TZID=Asia/Shanghai:{final_etime_str}
+DESCRIPTION:{teacher}{serial}\nLOCATION:{str(obj["Classroom"])}
+TZID:America/Chicago\nSEQUENCE:0\nUID:{uid()}\nRRULE:FREQ=WEEKLY;UNTIL={stop_time_str};INTERVAL={extra_status}
+DTSTART;TZID=America/Chicago:{final_stime_str}\nDTEND;TZID=America/Chicago:{final_etime_str}
 X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC\n{_alarm_base}END:VEVENT\n'''
+            
+            # print(_ical_base)
 
             # 写入文件
             with open(f"res-{str(utc_now)}.ics", "a", encoding='UTF-8') as f:
